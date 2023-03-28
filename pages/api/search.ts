@@ -1,5 +1,9 @@
 import { supabaseAdmin } from "@/utils";
 
+// Move the Supabase endpoint and similarity threshold to a configuration file
+const SUPABASE_ENDPOINT = process.env.SUPABASE_ENDPOINT ?? "car_licence_search";
+const SIMILARITY_THRESHOLD = parseFloat(process.env.SIMILARITY_THRESHOLD ?? "0.01");
+
 export const config = {
   runtime: "edge"
 };
@@ -29,21 +33,26 @@ const handler = async (req: Request): Promise<Response> => {
     const json = await res.json();
     const embedding = json.data[0].embedding;
 
-    const { data: chunks, error } = await supabaseAdmin.rpc("pg_search", {
-      query_embedding: embedding,
-      similarity_threshold: 0.01,
-      match_count: matches
-    });
+    // Validate the matches parameter before passing it to the RPC call
+    const maxMatches = 10; // set an arbitrary maximum value
+    const validatedMatches = Math.min(matches, maxMatches);
+
+    const { data, error } = await supabaseAdmin
+      .rpc(SUPABASE_ENDPOINT, {
+        query_embedding: embedding,
+        similarity_threshold: SIMILARITY_THRESHOLD,
+        match_count: validatedMatches
+      });
 
     if (error) {
       console.error(error);
       return new Response("Error", { status: 500 });
     }
 
-    return new Response(JSON.stringify(chunks), { status: 200 });
+    return new Response(JSON.stringify(data), { status: 200 });
   } catch (error) {
     console.error(error);
-    return new Response("Error", { status: 500 });
+    return new Response("An error occurred while processing the request.", { status: 500 });
   }
 };
 
